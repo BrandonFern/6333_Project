@@ -79,12 +79,17 @@ document.getElementById('showRegisterBtn')?.addEventListener('click', async () =
 });
 
 async function doLogout() {
+  try {
   await apiSend('POST', '/auth/logout');
   session = null;
   document.getElementById('appShell').style.display = 'none';
   document.getElementById('loginPage').style.display = 'flex';
   document.getElementById('loginEmail').value = '';
   document.getElementById('loginPwd').value = '';
+  window.location.reload();
+  }catch (err) {
+    console.error('Logout failed:', err);
+  }
 }
 
 /* ═══════════════════════════════════════════════

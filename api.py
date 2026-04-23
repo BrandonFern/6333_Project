@@ -162,6 +162,7 @@ def api_logout():
 def api_register():
     data = request.get_json(force=True)
 
+    # 1. Validate Input (Before opening a DB connection)
     required = ['first_name', 'last_name', 'email', 'password', 'role']
     for field in required:
         if not data.get(field):
@@ -171,38 +172,50 @@ def api_register():
     if data['role'] not in allowed_roles:
         return jsonify({'error': 'Invalid role'}), 400
 
+    # 2. Process Data
     email = str(data['email']).strip().lower()
     pwd_hash = bcrypt.hashpw(data['password'].encode(), bcrypt.gensalt(rounds=12)).decode()
 
+    # 3. Database Operations
     db = get_db()
     cur = db.cursor()
 
-    cur.execute("SELECT user_id FROM Users WHERE email = %s", (email,))
-    if cur.fetchone():
+    try:
+        # Manual check for existing email
+        cur.execute("SELECT user_id FROM Users WHERE email = %s", (email,))
+        if cur.fetchone():
+            return jsonify({'error': 'Email already exists'}), 409
+
+        # Insert new user
+        cur.execute("""
+            INSERT INTO Users (first_name, last_name, email, password_hash, role, department_id)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            data['first_name'],
+            data['last_name'],
+            email,
+            pwd_hash,
+            data['role'],
+            data.get('department_id')
+        ))
+        db.commit()
+        user_id = cur.lastrowid
+        return jsonify({'user_id': user_id}), 201
+
+    except mysql.connector.errors.IntegrityError as e:
+        db.rollback()  # Immediately releases any locks
+        if e.errno == 1062:
+            return jsonify({'error': 'This email is already registered.'}), 409
+        return jsonify({'error': 'Database integrity error.'}), 400
+
+    except Exception as e:
+        db.rollback()  # Rollback for any other unexpected errors
+        return jsonify({'error': str(e)}), 500
+
+    finally:
+        # These lines ALWAYS run, ensuring the connection is never left open
         cur.close()
         db.close()
-        return jsonify({'error': 'Email already exists'}), 409
-
-    cur.execute("""
-        INSERT INTO Users (first_name, last_name, email, password_hash, role, department_id)
-        VALUES (%s, %s, %s, %s, %s, %s)
-    """, (
-        data['first_name'],
-        data['last_name'],
-        email,
-        pwd_hash,
-        data['role'],
-        data.get('department_id')
-    ))
-    db.commit()
-    user_id = cur.lastrowid
-
-    cur.close()
-    db.close()
-    return jsonify({'user_id': user_id}), 201
-
-
-
 
 # ─────────────────────────────────────────────
 # DASHBOARD
@@ -364,27 +377,38 @@ def api_get_equipment():
 @admin_required
 def api_add_equipment():
     data = request.get_json(force=True)
-
     db = get_db()
     cur = db.cursor()
 
-    cur.execute("""
-        INSERT INTO Equipment
-            (equipment_name, serial_number, equipment_type_id, building_id, purchase_date, status)
-        VALUES (%s, %s, %s, %s, %s, 'available')
-    """, (
-        data['equipment_name'],
-        data['serial_number'],
-        int(data['equipment_type_id']),
-        int(data['building_id']),
-        data['purchase_date'],
-    ))
-    db.commit()
-    equipment_id = cur.lastrowid
+    try:
+        cur.execute("""
+            INSERT INTO Equipment
+                (equipment_name, serial_number, equipment_type_id, building_id, purchase_date, status)
+            VALUES (%s, %s, %s, %s, %s, 'available')
+        """, (
+            data['equipment_name'],
+            data['serial_number'],
+            int(data['equipment_type_id']),
+            int(data['building_id']),
+            data['purchase_date'],
+        ))
+        db.commit()
+        return jsonify({'equipment_id': cur.lastrowid}), 201
 
-    cur.close()
-    db.close()
-    return jsonify({'equipment_id': equipment_id}), 201
+    except mysql.connector.errors.IntegrityError as e:
+        db.rollback() # Immediately unlocks the table
+        if e.errno == 1062:
+            return jsonify({'error': f"Serial '{data['serial_number']}' already exists."}), 409
+        return jsonify({'error': 'Database integrity error'}), 400
+
+    except Exception as e:
+        db.rollback()
+        return jsonify({'error': str(e)}), 500
+
+    finally:
+        # This block ALWAYS runs, even if there is an error
+        cur.close()
+        db.close()
 
 
 @app.route('/api/equipment/<int:equipment_id>/history')
