@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="">
+  <title>SmartLab — Equipment Management System</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- ═══════════════════════════════════
+     LOGIN PAGE
+════════════════════════════════════ -->
+<div id="loginPage" class="login-wrap">
+  <div class="login-box">
+    <div class="login-logo">Smart<span>Lab</span></div>
+    <div class="login-tagline">Laboratory Equipment Management System</div>
+
+    <div class="login-error" id="loginErr">Invalid email or password.</div>
+
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input type="email" class="form-input" id="loginEmail" placeholder="your@university.edu">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input type="password" class="form-input" id="loginPwd" placeholder="">
+    </div>
+
+    <div class="login-sep">Sign in as</div>
+
+    <div class="role-picker">
+      <div class="role-opt selected" data-role="admin">Admin</div>
+      <div class="role-opt" data-role="professor">Professor</div>
+      <div class="role-opt" data-role="lab_manager">Lab Manager</div>
+      <div class="role-opt" data-role="student">Student</div>
+    </div>
+
+    <button class="btn btn-primary btn-full" id="loginBtn">Sign In</button>
+
+    <p class="login-register-hint">
+      No account?
+      <span class="link" id="showRegisterBtn">Register</span>
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════
+     APP SHELL
+════════════════════════════════════ -->
+<div id="appShell" class="shell" style="display:none;">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-wordmark">Smart<span>Lab</span></div>
+      <div class="logo-tagline">Equipment Management</div>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-label">Main</div>
+      <div class="nav-item active" data-page="dashboard">
+        <span class="nav-bullet"></span> Dashboard
+      </div>
+      <div class="nav-item" data-page="equipment">
+        <span class="nav-bullet"></span> Equipment
+      </div>
+      <div class="nav-item" data-page="reservations">
+        <span class="nav-bullet"></span> Reservations
+      </div>
+      <div class="nav-item" data-page="maintenance">
+        <span class="nav-bullet"></span> Maintenance
+      </div>
+      <div class="nav-item" data-page="certifications">
+        <span class="nav-bullet"></span> Certifications
+      </div>
+
+      <div id="adminNav" style="display:none;">
+        <div class="nav-label">Admin</div>
+        <div class="nav-item" data-page="users">
+          <span class="nav-bullet"></span> All Users
+        </div>
+        <div class="nav-item" data-page="analytics">
+          <span class="nav-bullet"></span> Analytics
+        </div>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="user-avatar" id="sideAvatar">--</div>
+        <div class="user-meta">
+          <div class="user-name" id="sideName">Loading...</div>
+          <div class="user-role" id="sideRole">--</div>
+        </div>
+        <button class="btn-logout" id="logoutBtn">out</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- TOPBAR -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <div class="page-title" id="topTitle">Dashboard</div>
+        <div class="breadcrumb">
+          <span class="sep">/</span>
+          <span id="topCrumb">Overview</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span id="roleTag" class="badge b-admin">admin</span>
+        <button class="btn btn-secondary btn-sm" id="topLogoutBtn">Sign out</button>
+      </div>
+    </div>
+
+    <!-- CONTENT PAGES -->
+    <div class="content">
+
+      <!-- DASHBOARD -->
+      <div id="page-dashboard" class="page active">
+        <div class="stat-row">
+          <div class="stat-card">
+            <div class="stat-label">Total Equipment</div>
+            <div class="stat-value" id="statTotal">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Available Now</div>
+            <div class="stat-value" id="statAvailable">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">My Reservations</div>
+            <div class="stat-value" id="statReservations">--</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Open Issues</div>
+            <div class="stat-value" id="statIssues">--</div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">My Upcoming Reservations</div>
+              <button class="btn btn-primary btn-sm" data-modal="reserveModal">New Reservation</button>
+            </div>
+            <div class="tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Equipment</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Status</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="dashReservationsTbody">
+                  <tr><td colspan="5">
+                    <div class="empty">
+                      <div class="empty-title">No upcoming reservations</div>
+                    </div>
+                  </td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">Expiring Certifications</div>
+            </div>
+            <div id="dashCertsList">
+              <div class="empty">
+                <div class="empty-title">No expiring certifications</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Equipment Utilization</div>
+          </div>
+          <div class="empty" style="padding:32px;">
+            <div class="empty-title">Utilization data will appear here</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- EQUIPMENT -->
+      <div id="page-equipment" class="page">
+        <div class="search-row">
+          <input type="text" class="search-input" id="equipSearch" placeholder="Search by name or serial number...">
+          <select class="filter-sel" id="filterType">
+            <option value="">All Types</option>
+          </select>
+          <select class="filter-sel" id="filterBuilding">
+            <option value="">All Buildings</option>
+          </select>
+          <button class="btn btn-primary" id="addEquipBtn" data-modal="addEquipModal">Add Equipment</button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Equipment Inventory</div>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Serial #</th>
+                  <th>Type</th>
+                  <th>Building</th>
+                  <th>Status</th>
+                  <th>Purchase Date</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="equipTbody">
+                <tr><td colspan="8">
+                  <div class="empty">
+                    <div class="empty-title">Equipment records will populate here</div>
+                  </div>
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel" id="equipHistoryPanel">
+          <div class="panel-header">
+            <div class="panel-title">Equipment History</div>
+          </div>
+          <div class="empty" style="padding:28px;">
+            <div class="empty-title">Select an equipment item to view history</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RESERVATIONS -->
+      <div id="page-reservations" class="page">
+        <div class="search-row">
+          <input type="text" class="search-input" id="resSearch" placeholder="Search reservations...">
+          <select class="filter-sel" id="filterResStatus">
+            <option value="">All Status</option>
+            <option value="pending">pending</option>
+            <option value="approved">approved</option>
+            <option value="active">active</option>
+            <option value="completed">completed</option>
+            <option value="canceled">canceled</option>
+          </select>
+          <button class="btn btn-primary" data-modal="reserveModal">New Reservation</button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Reservations</div>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>User</th>
+                  <th>Equipment</th>
+                  <th>Start</th>
+                  <th>End</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="resTbody">
+                <tr><td colspan="8">
+                  <div class="empty">
+                    <div class="empty-title">Reservation records will populate here</div>
+                  </div>
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Status Lifecycle</div>
+          </div>
+          <div class="lifecycle">
+            <span class="badge b-pending">pending</span>
+            <span class="lc-arrow">--&gt;</span>
+            <span class="badge b-approved">approved</span>
+            <span class="lc-arrow">--&gt;</span>
+            <span class="badge b-active">active</span>
+            <span class="lc-arrow">--&gt;</span>
+            <span class="badge b-completed">completed</span>
+            <span class="lc-arrow lc-or">or</span>
+            <span class="badge b-canceled">canceled</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- MAINTENANCE -->
+      <div id="page-maintenance" class="page">
+        <div class="search-row">
+          <input type="text" class="search-input" id="maintSearch" placeholder="Search maintenance logs...">
+          <select class="filter-sel" id="filterMaintStatus">
+            <option value="">All Status</option>
+            <option value="open">open</option>
+            <option value="in_progress">in_progress</option>
+            <option value="resolved">resolved</option>
+          </select>
+          <button class="btn btn-danger" data-modal="issueModal">Report Issue</button>
+        </div>
+
+        <div class="alert alert-warn">
+          Reporting an issue immediately takes the equipment offline and cancels all pending or approved reservations for that item.
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Maintenance Logs</div>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Equipment</th>
+                  <th>Reported By</th>
+                  <th>Description</th>
+                  <th>Reported</th>
+                  <th>Resolved</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="maintTbody">
+                <tr><td colspan="8">
+                  <div class="empty">
+                    <div class="empty-title">Maintenance records will populate here</div>
+                  </div>
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- CERTIFICATIONS -->
+      <div id="page-certifications" class="page">
+        <div class="search-row">
+          <input type="text" class="search-input" id="certSearch" placeholder="Search certifications...">
+          <button class="btn btn-primary" id="grantCertBtn" data-modal="grantCertModal">Grant Certification</button>
+        </div>
+
+        <div class="alert alert-info">
+          Valid certifications are required to reserve certain equipment. They are checked automatically when making a reservation. Contact an admin to grant or renew a certification.
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">My Certifications</div>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Equipment Type</th>
+                  <th>Issued</th>
+                  <th>Expires</th>
+                  <th>Days Remaining</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="certTbody">
+                <tr><td colspan="5">
+                  <div class="empty">
+                    <div class="empty-title">No certifications on record</div>
+                  </div>
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- USERS (Admin only) -->
+      <div id="page-users" class="page">
+        <div class="search-row">
+          <input type="text" class="search-input" id="userSearch" placeholder="Search by name, email, or department...">
+          <select class="filter-sel" id="filterUserRole">
+            <option value="">All Roles</option>
+            <option value="student">student</option>
+            <option value="professor">professor</option>
+            <option value="lab_manager">lab_manager</option>
+            <option value="admin">admin</option>
+          </select>
+          <button class="btn btn-primary" data-modal="registerModal">Add User</button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">All Users <span class="admin-tag">admin only</span></div>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>First Name</th>
+                  <th>Last Name</th>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Department</th>
+                  <th>Joined</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="usersTbody">
+                <tr><td colspan="8">
+                  <div class="empty">
+                    <div class="empty-title">User records will populate here</div>
+                  </div>
+                </td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ANALYTICS (Admin only) -->
+      <div id="page-analytics" class="page">
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-title">Utilization Report</div>
+          </div>
+          <div class="analytics-form">
+            <div class="alert alert-info">
+              Calculates total active hours per equipment item within the selected date range.
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Start Date</label>
+                <input type="date" class="form-input" id="utilStart">
+              </div>
+              <div class="form-group">
+                <label class="form-label">End Date</label>
+                <input type="date" class="form-input" id="utilEnd">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Department (optional)</label>
+                <select class="form-input" id="utilDept">
+                  <option value="">All Departments</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Building (optional)</label>
+                <select class="form-input" id="utilBuilding">
+                  <option value="">All Buildings</option>
+                </select>
+              </div>
+            </div>
+            <button class="btn btn-primary" id="runReportBtn">Generate Report</button>
+          </div>
+          <div id="utilResults">
+            <div class="empty" style="padding:30px 18px; border-top:1px solid var(--border);">
+              <div class="empty-title">Run report to see utilization results</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">Idle Equipment</div>
+            </div>
+            <div class="tbl-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Building</th>
+                  </tr>
+                </thead>
+                <tbody id="idleTbody">
+                  <tr><td colspan="3">
+                    <div class="empty">
+                      <div class="empty-title">No idle equipment found</div>
+                    </div>
+                  </td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-header">
+              <div class="panel-title">System Totals</div>
+            </div>
+            <table>
+              <tbody>
+                <tr>
+                  <td class="sys-label">Total Users</td>
+                  <td class="sys-val" id="sysTotalUsers">--</td>
+                </tr>
+                <tr>
+                  <td class="sys-label">Total Equipment</td>
+                  <td class="sys-val" id="sysTotalEquip">--</td>
+                </tr>
+                <tr>
+                  <td class="sys-label">Total Reservations</td>
+                  <td class="sys-val" id="sysTotalRes">--</td>
+                </tr>
+                <tr>
+                  <td class="sys-label" style="border-bottom:none;">Open Tickets</td>
+                  <td class="sys-val" style="border-bottom:none;" id="sysTotalTickets">--</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end content -->
+  </div><!-- end main -->
+</div><!-- end appShell -->
+
+
+<!-- ═══════════════════════════════════
+     MODALS
+════════════════════════════════════ -->
+
+<!-- REGISTER -->
+<div class="modal-overlay" id="registerModal">
+  <div class="modal">
+    <div class="modal-title">Register New User</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">First Name</label>
+        <input type="text" class="form-input" id="regFirst">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Last Name</label>
+        <input type="text" class="form-input" id="regLast">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input type="email" class="form-input" id="regEmail">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input type="password" class="form-input" id="regPwd">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Role</label>
+        <select class="form-input" id="regRole">
+          <option value="student">student</option>
+          <option value="professor">professor</option>
+          <option value="lab_manager">lab_manager</option>
+          <option value="admin">admin</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Department</label>
+        <select class="form-input" id="regDept">
+          <option value="">-- select --</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="registerModal">Cancel</button>
+      <button class="btn btn-primary" id="submitRegister">Create Account</button>
+    </div>
+  </div>
+</div>
+
+<!-- NEW RESERVATION -->
+<div class="modal-overlay" id="reserveModal">
+  <div class="modal">
+    <div class="modal-title">New Reservation</div>
+    <div class="form-group">
+      <label class="form-label">Equipment</label>
+      <select class="form-input" id="resEquip">
+        <option value="">-- select equipment --</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Start Time</label>
+        <input type="datetime-local" class="form-input" id="resStart">
+      </div>
+      <div class="form-group">
+        <label class="form-label">End Time</label>
+        <input type="datetime-local" class="form-input" id="resEnd">
+      </div>
+    </div>
+    <div class="alert alert-info">
+      A valid certification is required for certain equipment. Conflicting time slots will be rejected automatically.
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="reserveModal">Cancel</button>
+      <button class="btn btn-primary" id="submitReservation">Submit Reservation</button>
+    </div>
+  </div>
+</div>
+
+<!-- REPORT ISSUE -->
+<div class="modal-overlay" id="issueModal">
+  <div class="modal">
+    <div class="modal-title">Report Equipment Issue</div>
+    <div class="form-group">
+      <label class="form-label">Equipment</label>
+      <select class="form-input" id="issueEquip">
+        <option value="">-- select equipment --</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Issue Description</label>
+      <textarea class="form-textarea" id="issueDesc" placeholder="Describe the problem in detail..."></textarea>
+    </div>
+    <div class="alert alert-warn">
+      This immediately takes the equipment offline and cancels all pending/approved reservations for this item.
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="issueModal">Cancel</button>
+      <button class="btn btn-danger" id="submitIssue">Submit Report</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD EQUIPMENT -->
+<div class="modal-overlay" id="addEquipModal">
+  <div class="modal">
+    <div class="modal-title">Add New Equipment <span class="admin-tag">admin only</span></div>
+    <div class="form-group">
+      <label class="form-label">Equipment Name</label>
+      <input type="text" class="form-input" id="equipName">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Serial Number</label>
+        <input type="text" class="form-input" id="equipSerial">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Purchase Date</label>
+        <input type="date" class="form-input" id="equipDate">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Equipment Type</label>
+        <select class="form-input" id="equipType">
+          <option value="">-- select type --</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Building</label>
+        <select class="form-input" id="equipBuilding">
+          <option value="">-- select building --</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="addEquipModal">Cancel</button>
+      <button class="btn btn-primary" id="submitAddEquip">Add Equipment</button>
+    </div>
+  </div>
+</div>
+
+<!-- GRANT CERTIFICATION -->
+<div class="modal-overlay" id="grantCertModal">
+  <div class="modal">
+    <div class="modal-title">Grant Certification <span class="admin-tag">admin only</span></div>
+    <div class="form-group">
+      <label class="form-label">User</label>
+      <select class="form-input" id="certUser">
+        <option value="">-- select user --</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Equipment Type</label>
+      <select class="form-input" id="certType">
+        <option value="">-- select type --</option>
+      </select>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Issue Date</label>
+        <input type="date" class="form-input" id="certIssued">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Expiration Date</label>
+        <input type="date" class="form-input" id="certExpires">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="grantCertModal">Cancel</button>
+      <button class="btn btn-primary" id="submitGrantCert">Grant Certification</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast">
+  <div class="toast-title" id="toastTitle">Done</div>
+  <div class="toast-msg" id="toastMsg"></div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
