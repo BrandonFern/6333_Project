@@ -30,7 +30,10 @@ def get_db():
     )
     # FIX: Ensure the DB session uses the same timezone as the user/app
     cur = conn.cursor()
-    cur.execute("SET time_zone = 'US/Central'") 
+    try:
+        cur.execute("SET time_zone = 'US/Central'")
+    except Exception:
+        pass  # timezone tables not loaded on this MySQL instance; continue without it
     cur.close()
     return conn
 
@@ -63,11 +66,12 @@ def admin_required(f):
     def wrapper(*args, **kwargs):
         db = get_db()
         cur = db.cursor()
-        cur.execute("SELECT role FROM Users WHERE user_id = %s", (session['user_id'],))
-        row = fetch_one_dict(cur)
-        cur.close()
-        db.close()
-
+        try:
+            cur.execute("SELECT role FROM Users WHERE user_id = %s", (session['user_id'],))
+            row = fetch_one_dict(cur)
+        finally:
+            cur.close()
+            db.close()
         if not row or row['role'] != 'admin':
             abort(403)
         return f(*args, **kwargs)
@@ -359,7 +363,8 @@ def api_get_equipment():
 
     cur.execute(f"""
         SELECT e.equipment_id, e.equipment_name, e.serial_number,
-               et.type_name, b.building_name, e.status, e.purchase_date
+               e.equipment_type_id, et.type_name,
+               e.building_id, b.building_name, e.status, e.purchase_date
         FROM Equipment e
         JOIN Equipment_Types et ON e.equipment_type_id = et.equipment_type_id
         JOIN Buildings b ON e.building_id = b.building_id
@@ -514,18 +519,26 @@ def api_create_reservation():
         return jsonify({'error': 'Equipment not found'}), 404
 
     cur.execute("""
-        SELECT certification_id
-        FROM Training_Certifications
-        WHERE user_id = %s
-          AND equipment_type_id = %s
-          AND expiration_date > CURRENT_DATE
-    """, (user_id, equip['equipment_type_id']))
-    has_training = cur.fetchone()
+        SELECT requires_training
+        FROM Equipment_Types
+        WHERE equipment_type_id = %s
+    """, (equip['equipment_type_id'],))
+    type_row = fetch_one_dict(cur)
 
-    if not has_training:
-        cur.close()
-        db.close()
-        return jsonify({'error': 'Training Required'}), 400
+    if type_row and type_row['requires_training']:
+        cur.execute("""
+            SELECT certification_id
+            FROM Training_Certifications
+            WHERE user_id = %s
+              AND equipment_type_id = %s
+              AND expiration_date > CURRENT_DATE
+        """, (user_id, equip['equipment_type_id']))
+        has_training = cur.fetchone()
+
+        if not has_training:
+            cur.close()
+            db.close()
+            return jsonify({'error': 'Training Required — no valid certification on file'}), 400
 
     cur.execute("""
         SELECT reservation_id
@@ -722,24 +735,33 @@ def api_resolve_maintenance(maintenance_id):
 @login_required
 def api_get_certifications():
     search_q = request.args.get('q')
-    
+    role = session.get('role')
+
     db = get_db()
     cur = db.cursor()
 
-    conditions = ["tc.user_id = %s"]
-    params = [session['user_id']]
+    conditions = []
+    params = []
+
+    # Admins see all users' certifications; everyone else sees only their own.
+    if role != 'admin':
+        conditions.append("tc.user_id = %s")
+        params.append(session['user_id'])
 
     if search_q:
-        conditions.append("et.type_name LIKE %s")
-        params.append(f"%{search_q}%")
+        conditions.append("(et.type_name LIKE %s OR u.first_name LIKE %s OR u.last_name LIKE %s)")
+        params.extend([f"%{search_q}%", f"%{search_q}%", f"%{search_q}%"])
 
-    where_clause = " AND ".join(conditions)
+    where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     cur.execute(f"""
-        SELECT et.type_name, tc.certification_date, tc.expiration_date
+        SELECT tc.certification_id,
+               CONCAT(u.first_name, ' ', u.last_name) AS user_name,
+               et.type_name, tc.certification_date, tc.expiration_date
         FROM Training_Certifications tc
         JOIN Equipment_Types et ON tc.equipment_type_id = et.equipment_type_id
-        WHERE {where_clause}
+        JOIN Users u ON tc.user_id = u.user_id
+        {where_clause}
         ORDER BY tc.expiration_date
     """, tuple(params))
 
@@ -761,6 +783,9 @@ def api_grant_certification():
         INSERT INTO Training_Certifications
             (user_id, equipment_type_id, certification_date, expiration_date)
         VALUES (%s, %s, %s, %s)
+        ON DUPLICATE KEY UPDATE
+            certification_date = VALUES(certification_date),
+            expiration_date    = VALUES(expiration_date)
     """, (
         int(data['user_id']),
         int(data['equipment_type_id']),
@@ -803,7 +828,7 @@ def api_users():
 
     cur.execute(f"""
         SELECT u.user_id, u.first_name, u.last_name, u.email, u.role,
-               d.department_name, u.created_at
+               u.department_id, d.department_name, u.created_at
         FROM Users u
         LEFT JOIN Departments d ON u.department_id = d.department_id
         {where_clause}
@@ -835,7 +860,7 @@ def api_utilization():
 
     department_id = request.args.get('department_id')
 
-    conditions = ["r.status = 'active'", "r.start_time BETWEEN %s AND %s"]
+    conditions = ["r.status IN ('active', 'completed')", "r.start_time BETWEEN %s AND %s"]
     params = [start_date, end_date]
 
     if building_id:
@@ -913,6 +938,159 @@ def api_analytics_totals():
         'total_res':     total_res,
         'open_tickets':  open_tickets,
     })
+
+
+# ─────────────────────────────────────────────
+# CERTIFICATIONS — DELETE
+# ─────────────────────────────────────────────
+
+@app.route('/api/certifications/<int:certification_id>', methods=['DELETE'])
+@admin_required
+def api_delete_certification(certification_id):
+    db = get_db()
+    cur = db.cursor()
+    try:
+        cur.execute(
+            "DELETE FROM Training_Certifications WHERE certification_id = %s",
+            (certification_id,)
+        )
+        db.commit()
+        if cur.rowcount == 0:
+            return jsonify({'error': 'Certification not found'}), 404
+        return jsonify({'ok': True})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        db.close()
+
+
+# ─────────────────────────────────────────────
+# EQUIPMENT — PATCH (edit details) + DELETE (retire)
+# ─────────────────────────────────────────────
+
+@app.route('/api/equipment/<int:equipment_id>', methods=['PATCH'])
+@admin_required
+def api_update_equipment(equipment_id):
+    data = request.get_json(force=True)
+    db = get_db()
+    cur = db.cursor()
+    try:
+        cur.execute("""
+            UPDATE Equipment
+            SET equipment_name    = %s,
+                equipment_type_id = %s,
+                building_id       = %s
+            WHERE equipment_id = %s
+        """, (
+            str(data['equipment_name']).strip(),
+            int(data['equipment_type_id']),
+            int(data['building_id']),
+            equipment_id,
+        ))
+        db.commit()
+        if cur.rowcount == 0:
+            return jsonify({'error': 'Equipment not found'}), 404
+        return jsonify({'ok': True})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        db.close()
+
+
+@app.route('/api/equipment/<int:equipment_id>', methods=['DELETE'])
+@admin_required
+def api_retire_equipment(equipment_id):
+    db = get_db()
+    cur = db.cursor()
+    try:
+        cur.execute(
+            "UPDATE Equipment SET status = 'retired' WHERE equipment_id = %s",
+            (equipment_id,)
+        )
+        # Cancel any open reservations for this equipment
+        cur.execute("""
+            UPDATE Reservations
+            SET status = 'canceled'
+            WHERE equipment_id = %s
+              AND status IN ('pending', 'approved')
+        """, (equipment_id,))
+        db.commit()
+        if cur.rowcount == 0 and cur.rowcount == 0:
+            pass  # retirement still succeeded even if no reservations to cancel
+        return jsonify({'ok': True})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        db.close()
+
+
+# ─────────────────────────────────────────────
+# USERS — PATCH (edit role/department) + DELETE
+# ─────────────────────────────────────────────
+
+@app.route('/api/users/<int:user_id>', methods=['PATCH'])
+@admin_required
+def api_update_user(user_id):
+    data = request.get_json(force=True)
+    allowed_roles = {'student', 'professor', 'lab_manager', 'admin'}
+
+    new_role = data.get('role', '')
+    if new_role not in allowed_roles:
+        return jsonify({'error': 'Invalid role'}), 400
+
+    dept_id = data.get('department_id')
+    if dept_id is not None:
+        dept_id = int(dept_id) if dept_id else None
+
+    db = get_db()
+    cur = db.cursor()
+    try:
+        cur.execute("""
+            UPDATE Users
+            SET role = %s, department_id = %s
+            WHERE user_id = %s
+        """, (new_role, dept_id, user_id))
+        db.commit()
+        if cur.rowcount == 0:
+            return jsonify({'error': 'User not found'}), 404
+        return jsonify({'ok': True})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        db.close()
+
+
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+@admin_required
+def api_delete_user(user_id):
+    if user_id == session['user_id']:
+        return jsonify({'error': 'You cannot delete your own account'}), 400
+
+    db = get_db()
+    cur = db.cursor()
+    try:
+        cur.execute("DELETE FROM Users WHERE user_id = %s", (user_id,))
+        db.commit()
+        if cur.rowcount == 0:
+            return jsonify({'error': 'User not found'}), 404
+        return jsonify({'ok': True})
+    except mysql.connector.errors.IntegrityError:
+        db.rollback()
+        return jsonify({'error': 'Cannot delete user — they have reservations or maintenance logs on record'}), 409
+    except Exception as e:
+        db.rollback()
+        return jsonify({'error': str(e)}), 500
+    finally:
+        cur.close()
+        db.close()
 
 
 if __name__ == '__main__':

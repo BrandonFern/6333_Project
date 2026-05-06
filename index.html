@@ -713,6 +713,69 @@
   </div>
 </div>
 
+<!-- EDIT EQUIPMENT -->
+<div class="modal-overlay" id="editEquipModal">
+  <div class="modal">
+    <div class="modal-title">Edit Equipment <span class="admin-tag">admin only</span></div>
+    <input type="hidden" id="editEquipId">
+    <div class="form-group">
+      <label class="form-label">Equipment Name</label>
+      <input type="text" class="form-input" id="editEquipName">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Equipment Type</label>
+        <select class="form-input" id="editEquipType">
+          <option value="">-- select type --</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Building</label>
+        <select class="form-input" id="editEquipBuilding">
+          <option value="">-- select building --</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="editEquipModal">Cancel</button>
+      <button class="btn btn-primary" id="submitEditEquip">Save Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT USER -->
+<div class="modal-overlay" id="editUserModal">
+  <div class="modal">
+    <div class="modal-title">Edit User <span class="admin-tag">admin only</span></div>
+    <input type="hidden" id="editUserId">
+    <div class="form-group">
+      <label class="form-label">User</label>
+      <input type="text" class="form-input" id="editUserName" disabled>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Role</label>
+        <select class="form-input" id="editUserRole">
+          <option value="student">student</option>
+          <option value="professor">professor</option>
+          <option value="lab_manager">lab_manager</option>
+          <option value="admin">admin</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Department</label>
+        <select class="form-input" id="editUserDept">
+          <option value="">-- none --</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close-modal="editUserModal">Cancel</button>
+      <button class="btn btn-primary" id="submitEditUser">Save Changes</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST -->
 <div class="toast" id="toast">
   <div class="toast-title" id="toastTitle">Done</div>

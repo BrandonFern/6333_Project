@@ -48,7 +48,9 @@ async function handleApiError(res) {
    2. AUTH
 ════════════════════════════════════════════════ */
 
-let session = null;
+let session     = null;
+let _equipCache = {};   // equipment_id → row — used to pre-fill the edit modal
+let _userCache  = {};   // user_id      → row — used to pre-fill the edit modal
 
 document.getElementById('loginBtn')?.addEventListener('click', async () => {
   const email = document.getElementById('loginEmail').value.trim();
@@ -275,6 +277,41 @@ async function loadSetupDropdowns() {
         certType.appendChild(opt);
       });
     }
+
+    // Edit Equipment modal dropdowns
+    const editEquipType = document.getElementById('editEquipType');
+    if (editEquipType) {
+      editEquipType.innerHTML = '<option value="">-- select type --</option>';
+      types.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.equipment_type_id;
+        opt.textContent = t.type_name;
+        editEquipType.appendChild(opt);
+      });
+    }
+
+    const editEquipBuilding = document.getElementById('editEquipBuilding');
+    if (editEquipBuilding) {
+      editEquipBuilding.innerHTML = '<option value="">-- select building --</option>';
+      buildings.forEach(b => {
+        const opt = document.createElement('option');
+        opt.value = b.building_id;
+        opt.textContent = b.building_name;
+        editEquipBuilding.appendChild(opt);
+      });
+    }
+
+    // Edit User modal department dropdown
+    const editUserDept = document.getElementById('editUserDept');
+    if (editUserDept) {
+      editUserDept.innerHTML = '<option value="">-- none --</option>';
+      depts.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.department_id;
+        opt.textContent = d.department_name;
+        editUserDept.appendChild(opt);
+      });
+    }
   } catch (err) {
     console.error('Could not load setup dropdowns:', err);
   }
@@ -446,6 +483,8 @@ async function loadEquipment() {
       return;
     }
 
+    rows.forEach(e => { _equipCache[e.equipment_id] = e; });
+
     tbody.innerHTML = rows.map(e => `
       <tr>
         <td class="db-cell">#${e.equipment_id}</td>
@@ -457,11 +496,17 @@ async function loadEquipment() {
         <td style="font-family:var(--mono);font-size:0.7rem;">${e.purchase_date ?? '--'}</td>
         <td>
           ${e.status === 'available'
-            ? `<button class="btn btn-primary btn-sm" onclick="openModal('reserveModal')">Reserve</button>`
+            ? `<button class="btn btn-primary btn-sm" onclick="reserveEquipment(${e.equipment_id})">Reserve</button>`
             : ''}
           <button class="btn btn-secondary btn-sm"
                   onclick="loadEquipmentHistory(${e.equipment_id})">History</button>
           <button class="btn btn-danger btn-sm" onclick="openModal('issueModal')">Issue</button>
+          ${session?.role === 'admin' ? `
+            <button class="btn btn-secondary btn-sm"
+                    onclick="openEditEquipModal(${e.equipment_id})">Edit</button>
+            ${e.status !== 'retired' ? `
+            <button class="btn btn-danger btn-sm"
+                    onclick="retireEquipment(${e.equipment_id})">Retire</button>` : ''}` : ''}
         </td>
       </tr>`).join('');
   } catch (_) {}
@@ -579,14 +624,24 @@ async function loadCertifications() {
   try {
     const params = new URLSearchParams();
     const searchVal = document.getElementById('certSearch')?.value.trim();
-
     if (searchVal) params.set('q', searchVal);
 
-    const rows = await apiGet(`/certifications?${params}`);
+    const rows  = await apiGet(`/certifications?${params}`);
     const tbody = document.getElementById('certTbody');
+    const isAdmin = session?.role === 'admin';
+
+    // Update table header dynamically based on role
+    const thead = tbody?.closest('table')?.querySelector('thead tr');
+    if (thead) {
+      thead.innerHTML = isAdmin
+        ? `<th>User</th><th>Equipment Type</th><th>Issued</th><th>Expires</th><th>Days Remaining</th><th>Status</th><th>Actions</th>`
+        : `<th>Equipment Type</th><th>Issued</th><th>Expires</th><th>Days Remaining</th><th>Status</th>`;
+    }
+
+    const cols = isAdmin ? 7 : 5;
 
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="5"><div class="empty">
+      tbody.innerHTML = `<tr><td colspan="${cols}"><div class="empty">
         <div class="empty-title">No certifications on record</div>
       </div></td></tr>`;
       return;
@@ -597,11 +652,16 @@ async function loadCertifications() {
       const cls = days < 0 ? 'b-expired' : days < 30 ? 'b-expiring' : 'b-valid';
       const statusLabel = days < 0 ? 'expired' : days < 30 ? 'expiring' : 'valid';
       return `<tr>
+        ${isAdmin ? `<td>${escHtml(c.user_name ?? '--')}</td>` : ''}
         <td>${escHtml(c.type_name)}</td>
         <td style="font-family:var(--mono);font-size:0.7rem;">${c.certification_date}</td>
         <td style="font-family:var(--mono);font-size:0.7rem;">${c.expiration_date}</td>
         <td style="font-family:var(--mono);font-weight:600;">${days} days</td>
         <td><span class="badge ${cls}">${statusLabel}</span></td>
+        ${isAdmin ? `<td>
+          <button class="btn btn-danger btn-sm"
+                  onclick="deleteCert(${c.certification_id})">Delete</button>
+        </td>` : ''}
       </tr>`;
     }).join('');
   } catch (_) {}
@@ -626,6 +686,8 @@ async function loadUsers() {
       return;
     }
 
+    rows.forEach(u => { _userCache[u.user_id] = u; });
+
     tbody.innerHTML = rows.map(u => `
       <tr>
         <td class="db-cell">#${u.user_id}</td>
@@ -639,6 +701,11 @@ async function loadUsers() {
           <button class="btn btn-secondary btn-sm" onclick="openModal('grantCertModal')">
             Grant Cert
           </button>
+          ${session?.role === 'admin' ? `
+            <button class="btn btn-secondary btn-sm"
+                    onclick="openEditUserModal(${u.user_id})">Edit</button>
+            <button class="btn btn-danger btn-sm"
+                    onclick="deleteUser(${u.user_id})">Delete</button>` : ''}
         </td>
       </tr>`).join('');
   } catch (_) {}
@@ -810,6 +877,43 @@ document.getElementById('submitGrantCert')?.addEventListener('click', async () =
     await apiSend('POST', '/certifications', body);
     showToast('Certification granted', 'Record saved.');
     closeModal('grantCertModal');
+    loadCertifications();
+  } catch (_) {}
+});
+
+document.getElementById('submitEditEquip')?.addEventListener('click', async () => {
+  const id   = parseInt(document.getElementById('editEquipId').value);
+  const body = {
+    equipment_name:    document.getElementById('editEquipName').value.trim(),
+    equipment_type_id: parseInt(document.getElementById('editEquipType').value),
+    building_id:       parseInt(document.getElementById('editEquipBuilding').value),
+  };
+
+  if (!body.equipment_name || !body.equipment_type_id || !body.building_id) {
+    showToast('Error', 'All fields are required.');
+    return;
+  }
+
+  try {
+    await apiSend('PATCH', `/equipment/${id}`, body);
+    showToast('Equipment updated', 'Changes saved.');
+    closeModal('editEquipModal');
+    loadEquipment();
+  } catch (_) {}
+});
+
+document.getElementById('submitEditUser')?.addEventListener('click', async () => {
+  const id   = parseInt(document.getElementById('editUserId').value);
+  const body = {
+    role:          document.getElementById('editUserRole').value,
+    department_id: document.getElementById('editUserDept').value || null,
+  };
+
+  try {
+    await apiSend('PATCH', `/users/${id}`, body);
+    showToast('User updated', 'Changes saved.');
+    closeModal('editUserModal');
+    loadUsers();
   } catch (_) {}
 });
 
@@ -833,6 +937,63 @@ async function resolveMaintenance(id) {
   await apiSend('PATCH', `/maintenance/${id}/resolve`, {});
   loadMaintenance();
   showToast('Success', 'Maintenance resolved.');
+}
+
+// Opens the reservation modal and pre-selects the equipment
+function reserveEquipment(equipmentId) {
+  openModal('reserveModal');
+  const sel = document.getElementById('resEquip');
+  if (sel) sel.value = equipmentId;
+}
+
+// Pre-fills and opens the Edit Equipment modal
+function openEditEquipModal(equipmentId) {
+  const e = _equipCache[equipmentId];
+  if (!e) return;
+  document.getElementById('editEquipId').value       = equipmentId;
+  document.getElementById('editEquipName').value     = e.equipment_name;
+  document.getElementById('editEquipType').value     = e.equipment_type_id;
+  document.getElementById('editEquipBuilding').value = e.building_id;
+  openModal('editEquipModal');
+}
+
+// Pre-fills and opens the Edit User modal
+function openEditUserModal(userId) {
+  const u = _userCache[userId];
+  if (!u) return;
+  document.getElementById('editUserId').value   = userId;
+  document.getElementById('editUserName').value = `${u.first_name} ${u.last_name}`;
+  document.getElementById('editUserRole').value = u.role;
+  document.getElementById('editUserDept').value = u.department_id ?? '';
+  openModal('editUserModal');
+}
+
+async function deleteCert(certId) {
+  if (!confirm('Delete this certification? This cannot be undone.')) return;
+  try {
+    await apiSend('DELETE', `/certifications/${certId}`, {});
+    showToast('Deleted', 'Certification removed.');
+    loadCertifications();
+  } catch (_) {}
+}
+
+async function deleteUser(userId) {
+  if (!confirm('Delete this user account? This cannot be undone.')) return;
+  try {
+    await apiSend('DELETE', `/users/${userId}`, {});
+    showToast('Deleted', 'User account removed.');
+    loadUsers();
+  } catch (_) {}
+}
+
+async function retireEquipment(equipmentId) {
+  if (!confirm('Retire this equipment? It will be taken offline and cannot be reserved. This cannot be undone.')) return;
+  try {
+    await apiSend('DELETE', `/equipment/${equipmentId}`, {});
+    showToast('Retired', 'Equipment marked as retired.');
+    loadEquipment();
+    loadDashboard();
+  } catch (_) {}
 }
 
 /* ═══════════════════════════════════════════════
